@@ -14,7 +14,7 @@
 #endif
 
 #if USE_MONITOR
-# warning "MONITOR is deprecated, use SDL instead. See lv_drivers/sdl/sdl.c"
+# error "MONITOR is deprecated, use SDL instead. See lv_drivers/sdl/sdl.c"
 #endif
 
 #if USE_KEYBOARD
@@ -124,6 +124,62 @@ static char buf[KEYBOARD_BUFFER_SIZE];
  *   GLOBAL FUNCTIONS
  **********************/
 
+// 1.25 from corners
+// x=160, 64
+// y=80   32
+// r=1.5
+void DrawCircle1(SDL_Renderer * renderer, int32_t centreX, int32_t centreY, int32_t radius)
+{
+   const int32_t diameter = (radius * 2);
+
+   int32_t x = (radius - 1);
+   int32_t y = 0;
+   int32_t tx = 1;
+   int32_t ty = 1;
+   int32_t error = (tx - diameter);
+
+   while (x >= y)
+   {
+      //  Each of the following renders an octant of the circle
+      SDL_RenderDrawPoint(renderer, centreX + x, centreY - y);
+      SDL_RenderDrawPoint(renderer, centreX + x, centreY + y);
+      SDL_RenderDrawPoint(renderer, centreX - x, centreY - y);
+      SDL_RenderDrawPoint(renderer, centreX - x, centreY + y);
+      SDL_RenderDrawPoint(renderer, centreX + y, centreY - x);
+      SDL_RenderDrawPoint(renderer, centreX + y, centreY + x);
+      SDL_RenderDrawPoint(renderer, centreX - y, centreY - x);
+      SDL_RenderDrawPoint(renderer, centreX - y, centreY + x);
+
+      if (error <= 0)
+      {
+         ++y;
+         error += ty;
+         ty += 2;
+      }
+
+      if (error > 0)
+      {
+         --x;
+         tx += 2;
+         error += (tx - diameter);
+      }
+   }
+}
+void draw_circle(SDL_Renderer *renderer, int x, int y, int radius)
+{
+    for (int w = 0; w < radius * 2; w++)
+    {
+        for (int h = 0; h < radius * 2; h++)
+        {
+            int dx = radius - w; // horizontal offset
+            int dy = radius - h; // vertical offset
+            if ((dx*dx + dy*dy) <= (radius * radius))
+            {
+                SDL_RenderDrawPoint(renderer, x + dx, y + dy);
+            }
+        }
+    }
+}
 void sdl_init(void)
 {
     /*Initialize the SDL*/
@@ -171,20 +227,38 @@ void sdl_display_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
     }
 
 #if SDL_DOUBLE_BUFFERED
+#error
     monitor.tft_fb_act = (uint32_t *)color_p;
 #else /*SDL_DOUBLE_BUFFERED*/
 
     int32_t y;
 #if LV_COLOR_DEPTH != 24 && LV_COLOR_DEPTH != 32    /*32 is valid but support 24 for backward compatibility too*/
+	// here
     int32_t x;
     for(y = area->y1; y <= area->y2 && y < disp_drv->ver_res; y++) {
         for(x = area->x1; x <= area->x2; x++) {
             monitor.tft_fb[y * disp_drv->hor_res + x] = lv_color_to32(*color_p);
+
+//            printf("%d %d %x\n", x, y, lv_color_to32(*color_p));
+            if (lv_color_to32(*color_p) < 0xffaaaaaa)
+	    {
+		SDL_SetRenderDrawColor(monitor.renderer, 0xff, 0xff, 0xff, SDL_ALPHA_OPAQUE);
+	    }
+	    else
+	    {
+		SDL_SetRenderDrawColor(monitor.renderer, 0x0, 0x0, 0x0, SDL_ALPHA_OPAQUE);
+	    }
+//		SDL_SetRenderDrawColor(monitor.renderer, 0xff, 0xff, 0xff, 0xff);
+
+	    draw_circle(monitor.renderer, x* 10, y * 10, 5);
+
+    SDL_RenderPresent(monitor.renderer);
             color_p++;
         }
 
     }
 #else
+#error foo
     uint32_t w = lv_area_get_width(area);
     for(y = area->y1; y <= area->y2 && y < disp_drv->ver_res; y++) {
         memcpy(&monitor.tft_fb[y * SDL_HOR_RES + area->x1], color_p, w * sizeof(lv_color_t));
@@ -413,7 +487,7 @@ int quit_filter(void * userdata, SDL_Event * event)
 
 static void monitor_sdl_clean_up(void)
 {
-    SDL_DestroyTexture(monitor.texture);
+ //   SDL_DestroyTexture(monitor.texture);
     SDL_DestroyRenderer(monitor.renderer);
     SDL_DestroyWindow(monitor.window);
 
@@ -440,31 +514,41 @@ static void window_create(monitor_t * m)
                               SDL_HOR_RES * SDL_ZOOM, SDL_VER_RES * SDL_ZOOM, flag);       /*last param. SDL_WINDOW_BORDERLESS to hide borders*/
 
     m->renderer = SDL_CreateRenderer(m->window, -1, SDL_RENDERER_SOFTWARE);
-    m->texture = SDL_CreateTexture(m->renderer,
-                                SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, SDL_HOR_RES, SDL_VER_RES);
-    SDL_SetTextureBlendMode(m->texture, SDL_BLENDMODE_BLEND);
+//    m->texture = SDL_CreateTexture(m->renderer,
+//                                SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, SDL_HOR_RES, SDL_VER_RES);
+//    SDL_SetTextureBlendMode(m->texture, SDL_BLENDMODE_BLEND);
 
+//    SDL_SetRenderDrawColor(m->renderer, 0x44, 0x44, 0x44,  SDL_ALPHA_OPAQUE);
+//    SDL_Rect r;
+//    r.x = 0; r.y = 0; r.w = SDL_HOR_RES; r.h = SDL_VER_RES;
+//    SDL_RenderDrawRect(m->renderer, &r);
+
+//    SDL_SetRenderDrawColor(m->renderer, 0xff, 0xff, 0xff, 0xff);
+//    draw_circle(m->renderer, 10, 10, 10);
+//    SDL_SetRenderDrawColor(m->renderer, 0x0, 0x0, 0x0, 0x0);
     /*Initialize the frame buffer to gray (77 is an empirical value) */
 #if SDL_DOUBLE_BUFFERED
-    SDL_UpdateTexture(m->texture, NULL, m->tft_fb_act, SDL_HOR_RES * sizeof(uint32_t));
+//    SDL_UpdateTexture(m->texture, NULL, m->tft_fb_act, SDL_HOR_RES * sizeof(uint32_t));
 #else
     m->tft_fb = (uint32_t *)malloc(sizeof(uint32_t) * SDL_HOR_RES * SDL_VER_RES);
     memset(m->tft_fb, 0x44, SDL_HOR_RES * SDL_VER_RES * sizeof(uint32_t));
 #endif
 
+    SDL_RenderPresent(m->renderer);
     m->sdl_refr_qry = true;
 
 }
 
 static void window_update(monitor_t * m)
 {
+    return;
 #if SDL_DOUBLE_BUFFERED == 0
-    SDL_UpdateTexture(m->texture, NULL, m->tft_fb, SDL_HOR_RES * sizeof(uint32_t));
+//    SDL_UpdateTexture(m->texture, NULL, m->tft_fb, SDL_HOR_RES * sizeof(uint32_t));
 #else
     if(m->tft_fb_act == NULL) return;
     SDL_UpdateTexture(m->texture, NULL, m->tft_fb_act, SDL_HOR_RES * sizeof(uint32_t));
 #endif
-    SDL_RenderClear(m->renderer);
+//    SDL_RenderClear(m->renderer);
 #if LV_COLOR_SCREEN_TRANSP
     SDL_SetRenderDrawColor(m->renderer, 0xff, 0, 0, 0xff);
     SDL_Rect r;
@@ -473,7 +557,7 @@ static void window_update(monitor_t * m)
 #endif
 
     /*Update the renderer with the texture containing the rendered image*/
-    SDL_RenderCopy(m->renderer, m->texture, NULL, NULL);
+    //SDL_RenderCopy(m->renderer, m->texture, NULL, NULL);
     SDL_RenderPresent(m->renderer);
 }
 
