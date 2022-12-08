@@ -50,6 +50,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include "SDL2/SDL_image.h"
 #include SDL_INCLUDE_PATH
 
 /*********************
@@ -72,6 +73,9 @@ typedef struct {
 #else
     uint32_t * tft_fb;
 #endif
+
+    SDL_Surface *surface;
+    SDL_Surface * led_image;
 }monitor_t;
 
 /**********************
@@ -215,6 +219,15 @@ void sdl_init(void)
  */
 void sdl_display_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p)
 {
+    SDL_Rect dstrect;
+    SDL_Rect srcrect;
+    dstrect.w = 10;
+    dstrect.h = 10;
+    srcrect.x = 0;
+    srcrect.y = 0;
+    srcrect.w = 10;
+    srcrect.h = 10;
+
     lv_coord_t hres = disp_drv->hor_res;
     lv_coord_t vres = disp_drv->ver_res;
 
@@ -234,29 +247,39 @@ void sdl_display_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
     int32_t y;
 #if LV_COLOR_DEPTH != 24 && LV_COLOR_DEPTH != 32    /*32 is valid but support 24 for backward compatibility too*/
 	// here
+
+    SDL_SetRenderDrawColor(monitor.renderer, 0x0, 0x0, 0x0, SDL_ALPHA_OPAQUE);
+    SDL_Rect r;
+    r.x = area->x1;
+    r.y = area->y1;
+    r.w = area->x2 - area->x1;
+    r.h = area->y2 - area->y1;
+    r.x *= 10;
+    r.y *= 10;
+    r.w *= 10;
+    r.h *= 10;
+
+    SDL_FillRect(monitor.surface, &r, 0x0);
+
+// todo fill rect of area to update
     int32_t x;
     for(y = area->y1; y <= area->y2 && y < disp_drv->ver_res; y++) {
         for(x = area->x1; x <= area->x2; x++) {
             monitor.tft_fb[y * disp_drv->hor_res + x] = lv_color_to32(*color_p);
+	    uint32_t color = lv_color_to32(*color_p);
 
-//            printf("%d %d %x\n", x, y, lv_color_to32(*color_p));
-            if (lv_color_to32(*color_p) < 0xffaaaaaa)
+            if (lv_color_to32(*color_p) < 0xffbbbbbb)
 	    {
-		SDL_SetRenderDrawColor(monitor.renderer, 0xff, 0xff, 0xff, SDL_ALPHA_OPAQUE);
+		dstrect.x = x*10;
+		dstrect.y = y*10;
+		SDL_BlitSurface(monitor.led_image, &srcrect, monitor.surface, &dstrect);
 	    }
-	    else
-	    {
-		SDL_SetRenderDrawColor(monitor.renderer, 0x0, 0x0, 0x0, SDL_ALPHA_OPAQUE);
-	    }
-//		SDL_SetRenderDrawColor(monitor.renderer, 0xff, 0xff, 0xff, 0xff);
 
-	    draw_circle(monitor.renderer, x* 10, y * 10, 5);
-
-    SDL_RenderPresent(monitor.renderer);
             color_p++;
         }
 
     }
+	    SDL_RenderPresent(monitor.renderer);
 #else
 #error foo
     uint32_t w = lv_area_get_width(area);
@@ -509,7 +532,7 @@ static void window_create(monitor_t * m)
     flag |= SDL_WINDOW_FULLSCREEN;
 #endif
 
-    m->window = SDL_CreateWindow("TFT Simulator",
+    m->window = SDL_CreateWindow("HUB75 LED Matrix Simulator",
                               SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                               SDL_HOR_RES * SDL_ZOOM, SDL_VER_RES * SDL_ZOOM, flag);       /*last param. SDL_WINDOW_BORDERLESS to hide borders*/
 
@@ -527,6 +550,26 @@ static void window_create(monitor_t * m)
 //    draw_circle(m->renderer, 10, 10, 10);
 //    SDL_SetRenderDrawColor(m->renderer, 0x0, 0x0, 0x0, 0x0);
     /*Initialize the frame buffer to gray (77 is an empirical value) */
+  const char *path = "../pixel10.png";
+  SDL_Surface* loadedSurface = IMG_Load( path);
+    if( loadedSurface == NULL )
+    {
+        printf( "Unable to load image %s! SDL_image Error: %s\n", path, IMG_GetError() );
+    }
+    else
+    {
+	m->surface  = SDL_GetWindowSurface( m->window );
+        //Convert surface to screen format
+        SDL_Surface *optimizedSurface = SDL_ConvertSurface( loadedSurface, m->surface->format, 0 ); // store this
+        if( optimizedSurface == NULL )
+        {
+            printf( "Unable to optimize image %s! SDL Error: %s\n", path, SDL_GetError() );
+        }
+
+	m->led_image = loadedSurface; //SDL_CreateTextureFromSurface(m->renderer, loadedSurface);
+        //Get rid of old loaded surface
+        //SDL_FreeSurface( loadedSurface );
+    }
 #if SDL_DOUBLE_BUFFERED
 //    SDL_UpdateTexture(m->texture, NULL, m->tft_fb_act, SDL_HOR_RES * sizeof(uint32_t));
 #else
