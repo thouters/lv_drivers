@@ -76,6 +76,7 @@ typedef struct {
 
     SDL_Surface *surface;
     SDL_Surface * led_image;
+    SDL_Surface * background_image;
 }monitor_t;
 
 /**********************
@@ -249,26 +250,26 @@ void sdl_display_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
 	// here
 
     SDL_SetRenderDrawColor(monitor.renderer, 0x0, 0x0, 0x0, SDL_ALPHA_OPAQUE);
-    SDL_Rect r;
-    r.x = area->x1;
-    r.y = area->y1;
-    r.w = area->x2 - area->x1;
-    r.h = area->y2 - area->y1;
-    r.x *= 10;
-    r.y *= 10;
-    r.w *= 10;
-    r.h *= 10;
+    SDL_Rect area_to_clear;
+    area_to_clear.x = area->x1;
+    area_to_clear.y = area->y1;
+    area_to_clear.w = area->x2 - area->x1;
+    area_to_clear.h = area->y2 - area->y1;
+    area_to_clear.x *= 10;
+    area_to_clear.y *= 10;
+    area_to_clear.w *= 10;
+    area_to_clear.h *= 10;
 
-    SDL_FillRect(monitor.surface, &r, 0x0);
+    SDL_BlitSurface(monitor.background_image, &area_to_clear, monitor.surface, &area_to_clear);
 
-// todo fill rect of area to update
+    // todo fill rect of area to update
     int32_t x;
     for(y = area->y1; y <= area->y2 && y < disp_drv->ver_res; y++) {
         for(x = area->x1; x <= area->x2; x++) {
             monitor.tft_fb[y * disp_drv->hor_res + x] = lv_color_to32(*color_p);
 	    uint32_t color = lv_color_to32(*color_p);
 
-            if (lv_color_to32(*color_p) < 0xffbbbbbb)
+            if (lv_color_to32(*color_p) < 0xff111111)
 	    {
 		dstrect.x = x*10;
 		dstrect.y = y*10;
@@ -279,7 +280,7 @@ void sdl_display_flush(lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_colo
         }
 
     }
-	    SDL_RenderPresent(monitor.renderer);
+    SDL_RenderPresent(monitor.renderer);
 #else
 #error foo
     uint32_t w = lv_area_get_width(area);
@@ -550,7 +551,7 @@ static void window_create(monitor_t * m)
 //    draw_circle(m->renderer, 10, 10, 10);
 //    SDL_SetRenderDrawColor(m->renderer, 0x0, 0x0, 0x0, 0x0);
     /*Initialize the frame buffer to gray (77 is an empirical value) */
-  const char *path = "../pixel10.png";
+  const char *path = "pixel10.png";
   SDL_Surface* loadedSurface = IMG_Load( path);
     if( loadedSurface == NULL )
     {
@@ -580,6 +581,34 @@ static void window_create(monitor_t * m)
     SDL_RenderPresent(m->renderer);
     m->sdl_refr_qry = true;
 
+    path = "backdrop1.png";
+    loadedSurface = IMG_Load( path);
+    if( loadedSurface == NULL )
+    {
+        printf( "Unable to load image %s! SDL_image Error: %s\n", path, IMG_GetError() );
+    }
+    else
+    {
+	m->surface  = SDL_GetWindowSurface( m->window );
+        //Convert surface to screen format
+        SDL_Surface *optimizedSurface = SDL_ConvertSurface( loadedSurface, m->surface->format, 0 ); // store this
+        if( optimizedSurface == NULL )
+        {
+            printf( "Unable to optimize image %s! SDL Error: %s\n", path, SDL_GetError() );
+        }
+
+	m->background_image = loadedSurface; //SDL_CreateTextureFromSurface(m->renderer, loadedSurface);
+        //Get rid of old loaded surface
+        //SDL_FreeSurface( loadedSurface );
+    }
+
+    SDL_Rect complete_rect;
+    complete_rect.x = 0;
+    complete_rect.y = 0;
+    complete_rect.w = 1280;
+    complete_rect.h = 320;
+
+    SDL_BlitSurface(m->background_image, &complete_rect, m->surface, &complete_rect);
 }
 
 static void window_update(monitor_t * m)
